@@ -2,5 +2,3 @@ framework module Cdjot {
     header "djot.h"
     private header "djot.h"
 }
-
-

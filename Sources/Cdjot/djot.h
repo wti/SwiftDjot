@@ -5,9 +5,6 @@
 #include <stdbool.h>
 #include "lua.h"
 
-/* self-contained demo to validate build. */
-int djot_demo();
-
 /* Open a Lua virtual machine and load the djot code.
  * This should only be done once, before all use of djot functions.
  * The state can be closed with djot_close. */

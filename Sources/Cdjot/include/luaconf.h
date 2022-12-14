@@ -7,11 +7,10 @@
 
 #ifndef luaconf_h
 #define luaconf_h
-
+#define LUA_USE_MACOSX
 #include <limits.h>
 #include <stddef.h>
 
-#define LUA_USE_MACOSX
 
 /*
 ** ===================================================================

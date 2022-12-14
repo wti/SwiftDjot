@@ -13,11 +13,8 @@
 #include <stddef.h>
 #include <stdio.h>
 
-
 #include "luaconf.h"
 
-/* TODO WTI normally in Makefile, to avoid deprecation warnings */
-#define LUA_USE_POSIX
 
 #define LUA_VERSION_MAJOR	"5"
 #define LUA_VERSION_MINOR	"4"

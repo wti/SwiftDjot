@@ -195,7 +195,7 @@ static int pmain(lua_State* L)
  return 0;
 }
 
-int mainDUPTODOWTI(int argc, char* argv[])
+int mainLUAC(int argc, char* argv[])
 {
  lua_State* L;
  int i=doargs(argc,argv);
