@@ -25,7 +25,7 @@ public class Djot {
     let name = "djot"
     let url = "https://github.com/jgm/djot.git"
     let branch = "main"
-    let commit = "474f1e0e7cce87c4f4fd889f681b508170760eed"
+    let commit = "4d821d9807cfe63c633a3a3242bff10a88ecd6d2"
     return "\(name) \(url) \(branch)@\(commit)"
   }
 
