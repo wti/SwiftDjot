@@ -75,6 +75,34 @@ class DjotTests: XCTestCase {
     }
   }
 
+  /// djot seems to tolerate the invalid-unicode character, but we detect it in the result
+  func testHtmlWithInvalidEncoding() {
+    let doc = "hi" + String(CBridge.invalidUnicodeChar) + "!"
+    let me = Djot()
+    let parse = me.parse("# \(doc)\n")
+    guard let parse = assertOk(parse) else { return }
+
+    let html = me.html(parse)
+    switch html {
+    case let .failure(err):
+      switch err {
+      case let .resultStrCopy(cerr):
+        switch cerr {
+        case let .encodingError(s, i):
+          if let index = CBridge.unicodeInvalidAt(s) {
+            XCTAssertEqual(index, i, "wrong index for unicode invalid")
+          }
+          return  // done/pass
+        }
+      default:
+        break
+      }
+    default:
+      break
+    }
+    XCTFail("invalid encoding [\(doc)]expected fail, got \(html)")
+  }
+
   func assertOk<T, E: Error>(
     _ result: Result<T, E>,
     _ label: String? = "Result",

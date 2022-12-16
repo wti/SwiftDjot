@@ -9,14 +9,13 @@ import Swift
 ///
 /// This is not thread-safe; use only from one thread.
 ///
-/// This holds copies of the string passed to the parser until the next parse or deinit.
-/// This limits length of parser results to 1K + 32 times the input length.
+/// This creates and holds a copy of the string passed to the parser until the next parse or deinit,
+/// since the parser holds on to the buffer.
 ///
 /// Warning: This is ALPHA quality with bugs likely.
 public class Djot {
   /// initial parse id
   private static let PARSE_ID_START = 1000
-  private static let MAX_LENGTH_MULTIPLE = 32
   public static let DEMO_OK = 1
 
   /// Djot source version
@@ -42,7 +41,7 @@ public class Djot {
   /// Identify this parser
   private let id = UUID()
 
-  // Current parse() call (to avoid getting wrong results
+  // Current parse() call
   private var parseId = PARSE_ID_START
 
   // Store string copies passed to parser until next parse or deinit.
@@ -69,7 +68,9 @@ public class Djot {
   /// Parse document string and return events  per `djot_parse_and_render_events`.
   /// - Parameter doc: djot String to parse
   /// - Returns: Result with Tuple of (``Parse``, event: String) or ``DjotErr``
-  public func parseEvents(_ doc: String) -> Result<(Parse, String), DjotErr> {
+  public func parseEvents(_ doc: String, copyDoc: Bool = true) -> Result<
+    (Parse, String), DjotErr
+  > {
     let oldStringCount = strings.count
     // Allocate string because djot holds onto it for duration of the parser
     guard let cstr = allocStrForDjot(doc) else {
@@ -87,7 +88,7 @@ public class Djot {
     // Even if unable to read this result, might read others
     let parse = Parse(id, parseId, ok: true, inputCount: doc.count)
 
-    let stringErr = CBridge.cToSwiftStr(cstr, maxCount(parse))
+    let stringErr = CBridge.cToSwiftStr(cstr)
     switch stringErr {
     case let .success(result): return .success((parse, result))
     case let .failure(error): return .failure(.resultStrCopy(error))
@@ -108,10 +109,10 @@ public class Djot {
       return .failure(.docStrCopy)
     }
 
-    let validResult = 1  // unlike most unixy results
     parseId += 1
     deallocateStrings(oldStringCount)
     let result = djot_parse(luaState, cstr, includeSource)
+    let validResult = 1  // unlike most unixy results
     if validResult != result {
       // TODO: djot api says to seek error on nil result; also seek on parse fail?
       let error = findErrorFromDjot("Unknown parse fail")
@@ -129,8 +130,7 @@ public class Djot {
       let error = findErrorFromDjot("Unknown error rendering AST as JSON")
       return .failure(.astAsJson(error))
     }
-    let max = maxCount(parse)
-    return adaptCbridgeResultToDjotResult(CBridge.cToSwiftStr(cstr, max))
+    return adaptCbridgeResultToDjotResult(CBridge.cToSwiftStr(cstr))
   }
 
   /// Get HTML corresponding to djot input of ``Parse``
@@ -142,8 +142,7 @@ public class Djot {
       let error = findErrorFromDjot("Unknown error rendering HTML")
       return .failure(.html(error))
     }
-    let max = maxCount(parse)
-    return adaptCbridgeResultToDjotResult(CBridge.cToSwiftStr(cstr, max))
+    return adaptCbridgeResultToDjotResult(CBridge.cToSwiftStr(cstr))
   }
 
   private func adaptCbridgeResultToDjotResult(
@@ -155,14 +154,14 @@ public class Djot {
     }
   }
 
-  private func maxCount(_ parse: Parse) -> Int {
-    1024 + (Self.MAX_LENGTH_MULTIPLE * parse.inputCount)
-  }
-
-  private func findErrorFromDjot(_ defaultError: String) -> String {
+  private func findErrorFromDjot(_ defaultError: String) -> Result<
+    String, CBridgeErr
+  > {
     djot_report_error(luaState)
-    guard let errString = djot_get_error(luaState) else { return defaultError }
-    return String(cString: errString)  // TODO: leaking error string?
+    guard let errString = djot_get_error(luaState) else {
+      return .success(defaultError)
+    }
+    return CBridge.cToSwiftStr(errString)
   }
 
   private func allocStrForDjot(_ s: String) -> UnsafeMutablePointer<CChar>? {
@@ -180,7 +179,7 @@ public class Djot {
       strings[i].deallocate()
     }
     if 0 < min {
-      strings.removeFirst()
+      strings.removeFirst(min)
     }
   }
 
@@ -192,13 +191,13 @@ public class Djot {
     /// Failed making a copy of the input string before parsing
     case docStrCopy
     /// Failed during `djot_parse(..)`
-    case parse(_ code: Int, _ error: String)
+    case parse(_ code: Int, _ error: Result<String, CBridgeErr>)
     /// Failed during `djot_parse_and_render_events(..)`
-    case parseEvents(_ error: String)
+    case parseEvents(_ error: Result<String, CBridgeErr>)
     /// Failed during `djot_render_ast_json(..)`
-    case astAsJson(_ error: String)
+    case astAsJson(_ error: Result<String, CBridgeErr>)
     /// Failed during `djot_render_html(..)`
-    case html(_ error: String)
+    case html(_ error: Result<String, CBridgeErr>)
     /// djot command succeeded, but failed to copy resulting string
     case resultStrCopy(_ error: CBridgeErr)
     /// programming logic failure (bug - please report)
@@ -253,70 +252,39 @@ public class Djot {
 
 /// Errors from bridging C types to swift
 public enum CBridgeErr: Error {
-  /// Swift didn't like the characters passed back
-  case encodingError
-  /// Scanning for terminating null character did not find any before max scan reached
-  /// Users might consider increasing the maximum number of characters scanned.
-  case noNullFoundInMaxChars(_ max: Int)
+  /// Invalid unicode character at index
+  case encodingError(String, String.Index)
 }
 
-/// Converting C types to Swift in 5.7
-/// TODO: avoid multiple buffers and elementwise copying
+/// Converting data between C and Swift
 public enum CBridge {
+  public static let invalidUnicodeChar: Character = "\u{FFFD}"
 
-  public static let MAX_BYTES_IN_CHARPTR = 16 * 256 * 2048  // 16MB?
+  /// Check for ``invalidUnicodeChar`` injected by ``String.init(cString:)`` when
+  /// the input character array has invalid unicode sequences.
+  /// - Parameter s: String to inspect
+  /// - Returns: index of first ``invalidUnicodeChar``
+  public static func unicodeInvalidAt(_ s: String) -> String.Index? {
+    s.firstIndex { invalidUnicodeChar == $0 }
+  }
 
-  /// Copy from source as [UInt8] and generate String (and optionally report errors)
-  /// No guarantees encoding is correct.  Maximum size in bytes is ``MAX_BYTES_IN_CHARPTR``.
+  /// Read charPtr as C-string into Swift String and flag invalid encoding in result.
   /// - Parameters:
   ///   - charPtr: UnsafeMutablePointer<CChar>
-  ///   - maxByteCount: int (default ``MAX_BYTES_IN_CHARPTR``)
   /// - Returns: Result<String, CBridgeErr>
   public static func cToSwiftStr(
-    _ charPtr: UnsafeMutablePointer<CChar>,
-    _ maxByteCount: Int
+    _ charPtr: UnsafePointer<CChar>
   ) -> Result<String, CBridgeErr> {
-    let count = charPtrCount(charPtr, max: maxByteCount)
-    if 1 > count {  // 1 is minimum null-terminated string length
-      return .failure(.noNullFoundInMaxChars(maxByteCount))
-    }
-    if let result = charPtrToString(charPtr, count: count) {
-      return .success(result)
-    }
-    return .failure(.encodingError)
-  }
+    let result = String(cString: charPtr)
 
-  /// Copy to buffer for Swift String to copy again TODO: duplicate copies?  can't adopt/move?
-  private static func charPtrToString(
-    _ charPtr: UnsafeMutablePointer<CChar>,
-    count: Int
-  ) -> String? {
-    // Assume UTF8, i.e., null byte terminates
-    var p = charPtr
-    var ra = [CChar](repeating: CChar(0), count: count + 1)
-    for i in 0..<count {
-      ra[i] = p.pointee  // TODO check again for null??
-      p = p.successor()
-    }
-    let result = String(utf8String: ra)
-    return result
-  }
+    // String(cString) API docs say it copies from the buffer, so we could deallocate
+    // charPtr.deallocate()
+    // but get error: pointer being freed was not allocated (by us, presumably)
+    // so results are likely freed by djot
 
-  /// Count non-null char in C-string, up to max (default ``MAX_BYTES_IN_CHARPTR``)
-  /// return 0...``MAX_BYTES_IN_CHARPTR`` on success or -1 on failure
-  private static func charPtrCount(
-    _ charPtr: UnsafeMutablePointer<CChar>,
-    max: Int = Self.MAX_BYTES_IN_CHARPTR
-  )
-    -> Int
-  {
-    let nullChar: CChar = 0
-    for i in 0...max {
-      let next = charPtr.advanced(by: i)
-      if nullChar == next.pointee {
-        return i
-      }
+    if let index = unicodeInvalidAt(result) {
+      return .failure(.encodingError(result, index))
     }
-    return -1  // TODO: when exiting due to oversize, return oversize instead?
+    return .success(result)
   }
 }
