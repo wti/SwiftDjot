@@ -29,7 +29,7 @@ copyAndFix() {
   cd "$copy"
   
   # copy from built checkout
-  cp -r "$checkout/djot/clib/"* .
+  cp -r "$checkout/djot.lua/clib/"* .
   mv lua-src/* .
   
   # omit files we don't use
