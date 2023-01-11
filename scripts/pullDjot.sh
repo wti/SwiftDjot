@@ -6,13 +6,13 @@ checkout() {
   [ -d "$checkout" ] && return 2
   mkdir "$checkout"
   cd "$checkout"
-  git clone "https://github.com/jgm/djot.git"
+  git clone "https://github.com/jgm/djot.lua.git"
 }
 
 buildDjotClib() {
   logEntry
   cd "$checkout"  || return 12
-  cd djot/clib
+  cd djot.lua/clib
   if [ "Darwin" == "$(uname)" ]; then
     export SDKROOT=$(xcrun --sdk macosx --show-sdk-path)
     make LUA_USE_MACOSX=1
