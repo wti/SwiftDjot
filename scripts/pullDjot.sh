@@ -6,13 +6,13 @@ checkout() {
   [ -d "$checkout" ] && return 2
   mkdir "$checkout"
   cd "$checkout"
-  git clone "https://github.com/jgm/djot.lua.git"
+  git clone "https://github.com/jgm/${djotDir}.git"
 }
 
 buildDjotClib() {
   logEntry
   cd "$checkout"  || return 12
-  cd djot.lua/clib
+  cd "${djotDir}/clib"
   if [ "Darwin" == "$(uname)" ]; then
     export SDKROOT=$(xcrun --sdk macosx --show-sdk-path)
     make LUA_USE_MACOSX=1
@@ -29,7 +29,7 @@ copyAndFix() {
   cd "$copy"
   
   # copy from built checkout
-  cp -r "$checkout/djot.lua/clib/"* .
+  cp -r "$checkout/${djotDir}/clib/"* .
   mv lua-src/* .
   
   # omit files we don't use
@@ -158,7 +158,7 @@ buildSwiftDjot() {
 
 emitVersion() {
   local commit=UNKNOWN
-  cd "$checkout/djot" \
+  cd "$checkout/${djotDir}" \
     &&  commit="$(git rev-parse --verify HEAD)"
   echo "## Update version to commit: $commit"
 }
@@ -181,11 +181,7 @@ doAll() {
 # tested only on macOS
 
 cd "$(dirname "${0}")/.."
-if [ "" != "$(git status --short 2>&1)" ] ; then
-  echo "## clean git status to restore on overwrite failure"
-  return 99
-fi
-
+djotDir=djot.lua
 projectdir="$(pwd)"
 basedir="${projectdir}/../SwiftDjot-temp-gen"
 [ -d "$basedir" ] && rm -rf "$basedir"
@@ -194,5 +190,13 @@ checkout="$basedir/checkout"
 copy="$basedir/copy"
 dest="$projectdir/Sources/Cdjot"
 
-doAll
-echo "## pullDjot: $?"
+
+if [ "$1" == "emitVersion" ] ; then
+  emitVersion
+  echo "## pullDjot exit($?) for ${*}"
+#elif [ "" != "$(git status --short 2>&1)" ] ; then
+#  echo "## clean git status to restore on overwrite failure"
+else 
+  doAll
+  echo "## pullDjot exit($?)"
+fi

@@ -36,7 +36,7 @@ class DjotTests: XCTestCase {
 
     let (parse, events) = result
     let expected = """
-      [["+heading",1,1],["str",3,4],["-heading",4,4]]
+      [["+heading",1,1],["str",3,4],["-heading",5,5]]
       """
     check(parse, events, expected)
   }

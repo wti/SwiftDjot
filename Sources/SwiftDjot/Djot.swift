@@ -22,9 +22,9 @@ public class Djot {
   /// - Returns: String version of djot - no guarantees as to format
   public static func version() -> String {
     let name = "djot"
-    let url = "https://github.com/jgm/djot.git"
+    let url = "https://github.com/jgm/djot.lua.git"
     let branch = "main"
-    let commit = "4d821d9807cfe63c633a3a3242bff10a88ecd6d2"
+    let commit = "5970f1cff2fe6b5905ec1cdeab795d5b5b3b8b97"
     return "\(name) \(url) \(branch)@\(commit)"
   }
 
