@@ -21,5 +21,6 @@ let package = Package(
             name: "\(swiftDjot)Tests",
             dependencies: [ .target(name: swiftDjot) ]
         )
-    ]
+    ],
+    cxxLanguageStandard: .cxx17
 )
